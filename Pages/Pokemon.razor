@@ -1,0 +1,119 @@
+
+@page "/pokemon"
+@using System.Net
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject HttpClient Http
+
+<h1>Consulta Pokémon</h1>
+
+<p>Digite o nome de um Pokémon:</p>
+
+<input @bind="nomePesquisa" placeholder="Ex: pikachu" />
+
+<button @onclick="BuscarPokemon">
+    Pesquisar
+</button>
+
+@if (!string.IsNullOrEmpty(erro))
+{
+    <p style="color:red">@erro</p>
+}
+
+@if (carregando)
+{
+    <p>Pesquisando...</p>
+}
+
+@if (pokemon != null)
+{
+    <h2>@pokemon.Nome</h2>
+
+    <img src="@pokemon.Imagem"
+         alt="@pokemon.Nome"
+         width="200" />
+
+    <p>ID: @pokemon.Id</p>
+    <p>Nome: @pokemon.Nome</p>
+    <p>Altura: @(pokemon.Altura / 10.0) m</p>
+    <p>Peso: @(pokemon.Peso / 10.0) kg</p>
+}
+
+@code {
+    private string nomePesquisa = "";
+    private string erro = "";
+    private bool carregando = false;
+    private PokemonDados? pokemon;
+
+    private async Task BuscarPokemon()
+    {
+        pokemon = null;
+        erro = "";
+
+        if (string.IsNullOrWhiteSpace(nomePesquisa))
+        {
+            erro = "Digite o nome de um Pokémon.";
+            return;
+        }
+
+        carregando = true;
+
+        try
+        {
+            string nome = nomePesquisa.Trim().ToLowerInvariant();
+
+            var resposta = await Http.GetAsync(
+                $"https://pokeapi.co/api/v2/pokemon/{Uri.EscapeDataString(nome)}"
+            );
+
+            if (resposta.StatusCode == HttpStatusCode.NotFound)
+            {
+                erro = "Pokémon não encontrado.";
+                return;
+            }
+
+            resposta.EnsureSuccessStatusCode();
+
+            using var json = await resposta.Content
+                .ReadFromJsonAsync<JsonDocument>();
+
+            if (json == null)
+            {
+                erro = "Não foi possível ler os dados.";
+                return;
+            }
+
+            var dados = json.RootElement;
+
+            pokemon = new PokemonDados
+            {
+                Id = dados.GetProperty("id").GetInt32(),
+                Nome = dados.GetProperty("name").GetString() ?? "",
+                Altura = dados.GetProperty("height").GetInt32(),
+                Peso = dados.GetProperty("weight").GetInt32(),
+                Imagem = dados.GetProperty("sprites")
+                    .GetProperty("other")
+                    .GetProperty("official-artwork")
+                    .GetProperty("front_default")
+                    .GetString()
+            };
+        }
+        catch (Exception)
+        {
+            erro = "Erro ao consultar a API.";
+        }
+        finally
+        {
+            carregando = false;
+        }
+    }
+
+    public class PokemonDados
+    {
+        public int Id { get; set; }
+        public string Nome { get; set; } = "";
+        public int Altura { get; set; }
+        public int Peso { get; set; }
+        public string? Imagem { get; set; }
+    }
+}
